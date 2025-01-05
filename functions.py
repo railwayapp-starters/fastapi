@@ -29,6 +29,10 @@ def validate_request_data(data):
     return fields
 
 
+def log(level, msg, **kwargs):
+    """Centralized logger for structured JSON logging."""
+    print(json.dumps({"level": level, "msg": msg, **kwargs}))
+
 class GoHighLevelAPI:
     BASE_URL = "https://services.leadconnectorhq.com"
     HEADERS = {
@@ -40,6 +44,7 @@ class GoHighLevelAPI:
         self.location_id = location_id
 
     def get_conversation_id(self, contact_id):
+        """Retrieve conversation ID from GHL API."""
         token = fetch_ghl_access_token()
         if not token:
             log("error", "Get convo ID -- Token fetch failed", contact_id=contact_id)
@@ -61,3 +66,47 @@ class GoHighLevelAPI:
             return None
 
         return conversations[0].get("id")
+
+    def retrieve_messages(self, convo_id, contact_id):
+        """Retrieve messages from GHL API."""
+        token = fetch_ghl_access_token()
+        if not token:
+            log("error", "Retrieve Messages -- Token fetch failed", contact_id=contact_id)
+            return []
+
+        url = f"{self.BASE_URL}/conversations/{convo_id}/messages"
+        headers = {**self.HEADERS, "Authorization": f"Bearer {token}"}
+
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            log("error", "Retrieve Messages -- API Call Failed", \
+                contact_id=contact_id, convo_id=convo_id, \
+                status_code=response.status_code, response=response.text)
+            return []
+
+        messages = response.json().get("messages", {}).get("messages", [])
+        if not messages:
+            log("error", "Retrieve Messages -- No messages found", contact_id=contact_id, \
+                convo_id=convo_id, api_response=response.json())
+            return []
+
+        return messages
+
+    def update_contact(self, contact_id, update_data):
+        """Update contact information in GHL API."""
+        token = fetch_ghl_access_token()
+        if not token:
+            log("error", "Update Contact -- Token fetch failed", contact_id=contact_id)
+            return None
+
+        url = f"{self.BASE_URL}/contacts/{contact_id}"
+        headers = {**self.HEADERS, "Authorization": f"Bearer {token}"}
+
+        response = requests.put(url, headers=headers, json=update_data)
+        if response.status_code != 200:
+            log("error", "Update Contact -- API Call Failed", contact_id=contact_id, \
+                status_code=response.status_code, response=response.text)
+            return None
+
+        log("info", "Update Contact -- Successfully updated", contact_id=contact_id, response=response.json())
+        return response.json()
