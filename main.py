@@ -1,16 +1,37 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-import requests
 import traceback
-import json
-
-
+from redis import Redis
+import os
+from functions import (
+    validate_request_data,
+    fetch_ghl_access_token,
+    log,
+    GoHighLevelAPI
+)
 
 app = FastAPI()
 
-@app.get("/")
-async def root():
-    return {"greeting": "Hello, World!", "message": "Welcome to FastAPI!"}
+redis_url = os.getenv("REDIS_URL")
+redis_client = Redis.from_url(redis_url, decode_responses=True)
+
+@app.post("/trigger_response")
+async def trigger_response(request: Request):
+    try:
+        request_data = await request.json()
+        validated_fields = validate_request_data(request_data)
+
+        if not validated_fields:
+            return JSONResponse(content={"error": "Invalid request data"}, status_code=400)
+
+        # Add validated fields to Redis
+        redis_key = f"conversation:{validated_fields['ghl_convo_id']}"
+        redis_client.hmset(redis_key, validated_fields)
+
+        return JSONResponse(content={"message": "Data successfully added to Redis", "data": validated_fields}, status_code=200)
+    except Exception as e:
+        log("error", f"Unexpected error: {str(e)}", traceback=traceback.format_exc())
+        return JSONResponse(content={"error": "Internal server error"}, status_code=500)
 
 
 
