@@ -12,10 +12,6 @@ app = FastAPI()
 async def root():
     return {"greeting": "Hello, World!", "message": "Welcome to FastAPI!"}
 
-def log(level, msg, **kwargs):
-    """Centralized logger for structured JSON logging."""
-    kwargs['state'] = str(kwargs.get('state', {}))
-    print(json.dumps({"level": level, "msg": msg, **kwargs}))
 
 
 
