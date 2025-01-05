@@ -1,5 +1,3 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 import traceback
 from redis import Redis
 import os
