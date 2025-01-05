@@ -26,8 +26,8 @@ async def trigger_response(request: Request):
             return JSONResponse(content={"error": "Invalid request data"}, status_code=400)
 
         # Add validated fields to Redis
-        redis_key = f"conversation:{validated_fields['ghl_convo_id']}"
-        redis_client.hmset(redis_key, validated_fields)
+        redis_key = f"GHL_Contact_id:{validated_fields['ghl_contact_id']}"
+        redis_client.hmset(validated_fields['ghl_contact_id'], validated_fields)
 
         return JSONResponse(content={"message": "Data successfully added to Redis", "data": validated_fields}, status_code=200)
     except Exception as e:
