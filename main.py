@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 import traceback
 from redis import Redis
 import os
+import json
 from functions import (
     validate_request_data,
     fetch_ghl_access_token,
