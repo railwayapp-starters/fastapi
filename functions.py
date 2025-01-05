@@ -110,3 +110,39 @@ class GoHighLevelAPI:
 
         log("info", "Update Contact -- Successfully updated", contact_id=contact_id, response=response.json())
         return response.json()
+
+
+def fetch_ghl_access_token():
+    """Fetch current GHL access token from Railway."""
+    query = f"""
+    query {{
+      variables(
+        projectId: "{os.getenv('RAILWAY_PROJECT_ID')}"
+        environmentId: "{os.getenv('RAILWAY_ENVIRONMENT_ID')}"
+        serviceId: "{os.getenv('RAILWAY_SERVICE_ID')}"
+      )
+    }}
+    """
+    try:
+        response = requests.post(
+            "https://backboard.railway.app/graphql/v2",
+            headers={
+                "Authorization": f"Bearer {os.getenv('RAILWAY_API_TOKEN')}", 
+                "Content-Type": "application/json"
+            },
+            json={"query": query}
+        )
+        if response.status_code == 200:
+            response_data = response.json()
+            if response_data and 'data' in response_data and response_data['data']:
+                variables = response_data['data'].get('variables', {})
+                if variables and 'GHL_ACCESS' in variables:
+                    return variables['GHL_ACCESS']
+        log("error", f"GHL Access -- Failed to fetch token", 
+            scope="GHL Access", status_code=response.status_code, 
+            response=response.text)
+    except Exception as e:
+        log("error", f"GHL Access -- Request failed", 
+            scope="GHL Access", error=str(e), 
+            traceback=traceback.format_exc())
+    return None
