@@ -16,7 +16,7 @@ app = FastAPI()
 redis_url = os.getenv("REDIS_URL")
 redis_client = Redis.from_url(redis_url, decode_responses=True)
 
-@app.post("/trigger_response")
+@app.post("/triggerResponse")
 async def trigger_response(request: Request):
     try:
         request_data = await request.json()
@@ -26,10 +26,9 @@ async def trigger_response(request: Request):
             return JSONResponse(content={"error": "Invalid request data"}, status_code=400)
 
         # Add validated fields to Redis
-        redis_key = f"GHL_Contact_id:{validated_fields['ghl_contact_id']}"
-        redis_client.hmset(validated_fields['ghl_contact_id'], validated_fields)
+        redis_client.hset(validated_fields['ghl_contact_id'], mapping=validated_fields)
 
-        return JSONResponse(content={"message": "Data successfully added to Redis", "data": validated_fields}, status_code=200)
+        return JSONResponse(content={"message": "Response queued", "ghl_contact_id": validated_fields['ghl_contact_id']}, status_code=200)
     except Exception as e:
         log("error", f"Unexpected error: {str(e)}", traceback=traceback.format_exc())
         return JSONResponse(content={"error": "Internal server error"}, status_code=500)
