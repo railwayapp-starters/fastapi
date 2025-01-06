@@ -13,7 +13,7 @@ from functions import (
 
 app = FastAPI()
 
-redis_url = os.getenv("REDIS_URL")+"l"
+redis_url = "redis://default:PJBvKDvWPAcMzZwrCtyySaPCeSEIQUEy@redis.railway.internal:6370"
 redis_client = Redis.from_url(redis_url, decode_responses=True)
 log("error", redis_url)
 
