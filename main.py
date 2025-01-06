@@ -13,9 +13,8 @@ from functions import (
 
 app = FastAPI()
 
-redis_url = "redis://default:PJBvKDvWPAcMzZwrCtyySaPCeSEIQUEy@redis.railway.internal:6370"
+redis_url = os.getenv("REDIS_URL")
 redis_client = Redis.from_url(redis_url, decode_responses=True)
-log("error", redis_url)
 
 @app.post("/triggerResponse")
 async def trigger_response(request: Request):
@@ -32,12 +31,12 @@ async def trigger_response(request: Request):
         redis_client.expire(redis_key, 30)
 
         if result:
-            log("info", f"{validated_fields['ghl_contact_id']} Queue Updated",
+            log("info", f"{validated_fields['ghl_contact_id']} --- Time Delay Started",
                 scope="Redis Queue", num_fields_added=result,
                 fields_added=json.dumps(validated_fields),
                 ghl_contact_id=validated_fields['ghl_contact_id'])
         else:
-            log("error", f"{validated_fields['ghl_contact_id']} Queue Update Failed",
+            log("error", f"{validated_fields['ghl_contact_id']} --- Time Delay Reset",
                 scope="Redis Queue", num_fields_added=result,
                 fields_added=json.dumps(validated_fields),
                 ghl_contact_id=validated_fields['ghl_contact_id'])
