@@ -36,7 +36,7 @@ async def trigger_response(request: Request):
                 fields_added=json.dumps(validated_fields),
                 ghl_contact_id=validated_fields['ghl_contact_id'])
         else:
-            log("error", f"Redis Queue --- Time Delay Reset --- {validated_fields['ghl_contact_id']}",
+            log("info", f"Redis Queue --- Time Delay Reset --- {validated_fields['ghl_contact_id']}",
                 scope="Redis Queue", num_fields_added=result,
                 fields_added=json.dumps(validated_fields),
                 ghl_contact_id=validated_fields['ghl_contact_id'])
