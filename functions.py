@@ -29,7 +29,6 @@ def validate_request_data(data):
         if not fields["ghl_convo_id"]:
             return None
 
-    log("info", f"Validation -- Fields Received -- {fields['ghl_contact_id']}", scope="Validation", **fields)
     return fields
 
 
