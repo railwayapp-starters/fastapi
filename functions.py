@@ -5,7 +5,6 @@ import json
 
 def log(level, msg, **kwargs):
     """Centralized logger for structured JSON logging."""
-    kwargs['state'] = str(kwargs.get('state', {}))
     print(json.dumps({"level": level, "msg": msg, **kwargs}))
 
 
