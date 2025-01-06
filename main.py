@@ -13,8 +13,9 @@ from functions import (
 
 app = FastAPI()
 
-redis_url = os.getenv("REDIS_URL")
+redis_url = os.getenv("REDIS_URL")+"l"
 redis_client = Redis.from_url(redis_url, decode_responses=True)
+log("error", redis_url)
 
 @app.post("/triggerResponse")
 async def trigger_response(request: Request):
