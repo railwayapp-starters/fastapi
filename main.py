@@ -25,10 +25,28 @@ async def trigger_response(request: Request):
         if not validated_fields:
             return JSONResponse(content={"error": "Invalid request data"}, status_code=400)
 
-        # Add validated fields to Redis
-        result = redis_client.hset(validated_fields['ghl_contact_id'], mapping=validated_fields)
+        # Add validated fields to Redis with TTL
+        redis_key = f"contact:{validated_fields['ghl_contact_id']}"
+        result = redis_client.hset(redis_key, mapping=validated_fields)
+        redis_client.expire(redis_key, 30)
 
-        log("info", "redis add result", result=result)
+        if result:
+            log("info", f"{validated_fields['ghl_contact_id']} Queue Updated",
+                scope="Redis Queue", num_fields_added=result,
+                fields_added=json.dumps(validated_fields),
+                ghl_contact_id=validated_fields['ghl_contact_id'])
+        else:
+            log("error", f"{validated_fields['ghl_contact_id']} Queue Update Failed",
+                scope="Redis Queue", num_fields_added=result,
+                fields_added=json.dumps(validated_fields),
+                ghl_contact_id=validated_fields['ghl_contact_id'])
+
+        return JSONResponse(content={"message": "Response queued", "ghl_contact_id": validated_fields['ghl_contact_id']}, status_code=200)
+    except Exception as e:
+        log("error", f"Unexpected error: {str(e)}", traceback=traceback.format_exc())
+        return JSONResponse(content={"error": "Internal server error"}, status_code=500)
+
+
 
         return JSONResponse(content={"message": "Response queued", "ghl_contact_id": validated_fields['ghl_contact_id']}, status_code=200)
     except Exception as e:
