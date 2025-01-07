@@ -48,22 +48,33 @@ class GoHighLevelAPI:
             log("error", "Get convo ID -- Token fetch failed", contact_id=contact_id)
             return None
 
+        # Clean the token and ensure no whitespace or newlines
+        clean_token = token.strip() if token else None
+        if not clean_token:
+            log("error", "Invalid or empty token", contact_id=contact_id)
+            return None
+
         url = f"{self.BASE_URL}/conversations/search"
-        headers = {**self.HEADERS, "Authorization": f"Bearer {token}"}
+        headers = {**self.HEADERS, "Authorization": f"Bearer {clean_token}"}
         params = {"locationId": self.location_id, "contactId": contact_id}
 
-        response = requests.get(url, headers=headers, params=params)
-        if response.status_code != 200:
-            log("error", "Get convo ID API call failed", contact_id=contact_id,
-                status_code=response.status_code, response=response.text)
-            return None
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            if response.status_code != 200:
+                log("error", "Get convo ID API call failed", contact_id=contact_id,
+                    status_code=response.status_code, response=response.text)
+                return None
 
-        conversations = response.json().get("conversations", [])
-        if not conversations:
-            log("error", "No Convo ID found", contact_id=contact_id, response=response.text)
-            return None
+            conversations = response.json().get("conversations", [])
+            if not conversations:
+                log("error", "No Convo ID found", contact_id=contact_id, response=response.text)
+                return None
 
-        return conversations[0].get("id")
+            return conversations[0].get("id")
+        except Exception as e:
+            log("error", f"Exception in get_conversation_id: {str(e)}", 
+                contact_id=contact_id, traceback=traceback.format_exc())
+            return None
 
     def retrieve_messages(self, convo_id, contact_id):
         """Retrieve messages from GHL API."""
@@ -72,23 +83,35 @@ class GoHighLevelAPI:
             log("error", "Retrieve Messages -- Token fetch failed", contact_id=contact_id)
             return []
 
+        # Clean the token and ensure no whitespace or newlines
+        clean_token = token.strip() if token else None
+        if not clean_token:
+            log("error", "Invalid or empty token", contact_id=contact_id)
+            return []
+
         url = f"{self.BASE_URL}/conversations/{convo_id}/messages"
-        headers = {**self.HEADERS, "Authorization": f"Bearer {token}"}
+        headers = {**self.HEADERS, "Authorization": f"Bearer {clean_token}"}
 
-        response = requests.get(url, headers=headers)
-        if response.status_code != 200:
-            log("error", "Retrieve Messages -- API Call Failed",
-                contact_id=contact_id, convo_id=convo_id,
-                status_code=response.status_code, response=response.text)
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code != 200:
+                log("error", "Retrieve Messages -- API Call Failed",
+                    contact_id=contact_id, convo_id=convo_id,
+                    status_code=response.status_code, response=response.text)
+                return []
+
+            messages = response.json().get("messages", {}).get("messages", [])
+            if not messages:
+                log("error", "Retrieve Messages -- No messages found", contact_id=contact_id,
+                    convo_id=convo_id, api_response=response.json())
+                return []
+
+            return messages
+        except Exception as e:
+            log("error", f"Exception in retrieve_messages: {str(e)}", 
+                contact_id=contact_id, convo_id=convo_id, 
+                traceback=traceback.format_exc())
             return []
-
-        messages = response.json().get("messages", {}).get("messages", [])
-        if not messages:
-            log("error", "Retrieve Messages -- No messages found", contact_id=contact_id,
-                convo_id=convo_id, api_response=response.json())
-            return []
-
-        return messages
 
     def update_contact(self, contact_id, update_data):
         """Update contact information in GHL API."""
@@ -97,17 +120,29 @@ class GoHighLevelAPI:
             log("error", "Update Contact -- Token fetch failed", contact_id=contact_id)
             return None
 
-        url = f"{self.BASE_URL}/contacts/{contact_id}"
-        headers = {**self.HEADERS, "Authorization": f"Bearer {token}"}
-
-        response = requests.put(url, headers=headers, json=update_data)
-        if response.status_code != 200:
-            log("error", "Update Contact -- API Call Failed", contact_id=contact_id,
-                status_code=response.status_code, response=response.text)
+        # Clean the token and ensure no whitespace or newlines
+        clean_token = token.strip() if token else None
+        if not clean_token:
+            log("error", "Invalid or empty token", contact_id=contact_id)
             return None
 
-        log("info", "Update Contact -- Successfully updated", contact_id=contact_id, response=response.json())
-        return response.json()
+        url = f"{self.BASE_URL}/contacts/{contact_id}"
+        headers = {**self.HEADERS, "Authorization": f"Bearer {clean_token}"}
+
+        try:
+            response = requests.put(url, headers=headers, json=update_data)
+            if response.status_code != 200:
+                log("error", "Update Contact -- API Call Failed", contact_id=contact_id,
+                    status_code=response.status_code, response=response.text)
+                return None
+
+            log("info", "Update Contact -- Successfully updated", contact_id=contact_id, 
+                response=response.json())
+            return response.json()
+        except Exception as e:
+            log("error", f"Exception in update_contact: {str(e)}", 
+                contact_id=contact_id, traceback=traceback.format_exc())
+            return None
 
 def fetch_ghl_access_token():
     """Fetch current GHL access token from Railway."""
@@ -134,7 +169,9 @@ def fetch_ghl_access_token():
             if response_data and 'data' in response_data and response_data['data']:
                 variables = response_data['data'].get('variables', {})
                 if variables and 'GHL_ACCESS' in variables:
-                    return variables['GHL_ACCESS']
+                    # Strip any whitespace and newlines from the token
+                    token = variables['GHL_ACCESS'].strip()
+                    return token
         log("error", f"GHL Access -- Failed to fetch token", 
             scope="GHL Access", status_code=response.status_code, 
             response=response.text)
