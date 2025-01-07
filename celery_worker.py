@@ -10,9 +10,8 @@ import time
 import json
 from concurrent.futures import ThreadPoolExecutor
 
-# Initialize OpenAI client
+# Initialize OpenAI
 openai.api_key = os.getenv('OPENAI_API_KEY')
-client = openai.Client()
 
 # Initialize Celery
 celery_app = Celery(
@@ -38,7 +37,7 @@ def wait_for_run_completion(thread_id, run_id):
     """Wait for the Assistant run to complete and return the final status"""
     while True:
         try:
-            run = client.beta.threads.runs.retrieve(
+            run = openai.Thread.retrieve_run(
                 thread_id=thread_id,
                 run_id=run_id
             )
@@ -68,14 +67,14 @@ def process_conversation(self, request_data):
 
         try:
             # Add message to thread
-            client.beta.threads.messages.create(
+            openai.Thread.create_message(
                 thread_id=thread_id,
                 role="user",
                 content=recent_message
             )
 
             # Create and run the assistant
-            run = client.beta.threads.runs.create(
+            run = openai.Thread.create_run(
                 thread_id=thread_id,
                 assistant_id=assistant_id
             )
@@ -86,8 +85,8 @@ def process_conversation(self, request_data):
                 raise Exception(f"Run failed or expired: {final_run.status if final_run else 'Unknown'}")
 
             # Get assistant's response
-            messages = client.beta.threads.messages.list(thread_id=thread_id)
-            latest_msg = next((msg for msg in messages if msg.role == "assistant"), None)
+            messages = openai.Thread.list_messages(thread_id=thread_id)
+            latest_msg = next((msg for msg in messages.data if msg.role == "assistant"), None)
             
             if not latest_msg:
                 raise Exception("No assistant response found")
