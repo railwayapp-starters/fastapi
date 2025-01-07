@@ -4,6 +4,6 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "bash -c 'celery -A celery_worker worker --loglevel=info & flower -A celery_worker --port=$PORT & hypercorn main:app --bind \"[::]:$PORT\"'"
+    "startCommand": "bash -c 'celery -A celery_worker worker --loglevel=info --uid=1000 & /opt/venv/bin/flower -A celery_worker --port=$PORT & hypercorn main:app --bind \"[::]:$PORT\"'"
   }
 }
