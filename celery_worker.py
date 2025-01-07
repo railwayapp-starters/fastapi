@@ -8,7 +8,6 @@ from functions import (
 )
 import time
 import json
-from concurrent.futures import ThreadPoolExecutor
 
 # Initialize OpenAI
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -37,7 +36,7 @@ def wait_for_run_completion(thread_id, run_id):
     """Wait for the Assistant run to complete and return the final status"""
     while True:
         try:
-            run = openai.Thread.retrieve_run(
+            run = openai.beta.threads.runs.retrieve(
                 thread_id=thread_id,
                 run_id=run_id
             )
@@ -52,7 +51,6 @@ def wait_for_run_completion(thread_id, run_id):
 def process_conversation(self, request_data):
     """
     Celery task to process conversation requests asynchronously.
-    Maintains original functionality while using Celery for queueing.
     """
     try:
         # Validate request data
@@ -67,14 +65,14 @@ def process_conversation(self, request_data):
 
         try:
             # Add message to thread
-            openai.Thread.create_message(
+            openai.beta.threads.messages.create(
                 thread_id=thread_id,
                 role="user",
                 content=recent_message
             )
 
             # Create and run the assistant
-            run = openai.Thread.create_run(
+            run = openai.beta.threads.runs.create(
                 thread_id=thread_id,
                 assistant_id=assistant_id
             )
@@ -85,7 +83,7 @@ def process_conversation(self, request_data):
                 raise Exception(f"Run failed or expired: {final_run.status if final_run else 'Unknown'}")
 
             # Get assistant's response
-            messages = openai.Thread.list_messages(thread_id=thread_id)
+            messages = openai.beta.threads.messages.list(thread_id=thread_id)
             latest_msg = next((msg for msg in messages.data if msg.role == "assistant"), None)
             
             if not latest_msg:
