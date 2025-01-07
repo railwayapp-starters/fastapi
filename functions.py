@@ -2,11 +2,11 @@ import traceback
 from redis import Redis
 import os
 import json
+import requests
 
 def log(level, msg, **kwargs):
     """Centralized logger for structured JSON logging."""
     print(json.dumps({"level": level, "msg": msg, **kwargs}))
-
 
 def validate_request_data(data):
     """
@@ -24,17 +24,12 @@ def validate_request_data(data):
         return None
 
     if not fields["ghl_convo_id"] or fields["ghl_convo_id"] in ["", "null"]:
-        ghl_api = GoHighLevelAPI(location_id="your_location_id")
+        ghl_api = GoHighLevelAPI(location_id=os.getenv('GHL_LOCATION_ID', ''))
         fields["ghl_convo_id"] = ghl_api.get_conversation_id(fields["ghl_contact_id"])
         if not fields["ghl_convo_id"]:
             return None
 
     return fields
-
-
-def log(level, msg, **kwargs):
-    """Centralized logger for structured JSON logging."""
-    print(json.dumps({"level": level, "msg": msg, **kwargs}))
 
 class GoHighLevelAPI:
     BASE_URL = "https://services.leadconnectorhq.com"
@@ -59,7 +54,7 @@ class GoHighLevelAPI:
 
         response = requests.get(url, headers=headers, params=params)
         if response.status_code != 200:
-            log("error", "Get convo ID API call failed", contact_id=contact_id, \
+            log("error", "Get convo ID API call failed", contact_id=contact_id,
                 status_code=response.status_code, response=response.text)
             return None
 
@@ -82,14 +77,14 @@ class GoHighLevelAPI:
 
         response = requests.get(url, headers=headers)
         if response.status_code != 200:
-            log("error", "Retrieve Messages -- API Call Failed", \
-                contact_id=contact_id, convo_id=convo_id, \
+            log("error", "Retrieve Messages -- API Call Failed",
+                contact_id=contact_id, convo_id=convo_id,
                 status_code=response.status_code, response=response.text)
             return []
 
         messages = response.json().get("messages", {}).get("messages", [])
         if not messages:
-            log("error", "Retrieve Messages -- No messages found", contact_id=contact_id, \
+            log("error", "Retrieve Messages -- No messages found", contact_id=contact_id,
                 convo_id=convo_id, api_response=response.json())
             return []
 
@@ -107,13 +102,12 @@ class GoHighLevelAPI:
 
         response = requests.put(url, headers=headers, json=update_data)
         if response.status_code != 200:
-            log("error", "Update Contact -- API Call Failed", contact_id=contact_id, \
+            log("error", "Update Contact -- API Call Failed", contact_id=contact_id,
                 status_code=response.status_code, response=response.text)
             return None
 
         log("info", "Update Contact -- Successfully updated", contact_id=contact_id, response=response.json())
         return response.json()
-
 
 def fetch_ghl_access_token():
     """Fetch current GHL access token from Railway."""
