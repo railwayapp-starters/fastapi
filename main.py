@@ -1,162 +1,145 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 import traceback
 from redis import Redis
 import os
 import json
-import openai
-from functions import (
-    validate_request_data,
-    fetch_ghl_access_token,
-    log,
-    GoHighLevelAPI
-)
-from celery_worker import process_conversation
+import requests
 
-app = FastAPI()
+def log(level, msg, **kwargs):
+    """Centralized logger for structured JSON logging."""
+    print(json.dumps({"level": level, "msg": msg, **kwargs}))
 
-# Initialize Redis client
-redis_url = os.getenv("REDIS_URL")
-redis_client = Redis.from_url(redis_url, decode_responses=True)
-
-# Initialize OpenAI client
-openai.api_key = os.getenv('OPENAI_API_KEY')
-client = openai.Client()
-
-@app.post("/triggerResponse")
-async def trigger_response(request: Request):
-    try:
-        request_data = await request.json()
-        validated_fields = validate_request_data(request_data)
-
-        if not validated_fields:
-            return JSONResponse(content={"error": "Invalid request data"}, status_code=400)
-
-        # Add validated fields to Redis with TTL
-        redis_key = f"contact:{validated_fields['ghl_contact_id']}"
-        result = redis_client.hset(redis_key, mapping=validated_fields)
-        redis_client.expire(redis_key, 30)
-
-        if result:
-            log("info", f"Redis Queue --- Time Delay Started --- {validated_fields['ghl_contact_id']}",
-                scope="Redis Queue", num_fields_added=result,
-                fields_added=json.dumps(validated_fields),
-                ghl_contact_id=validated_fields['ghl_contact_id'])
-        else:
-            log("info", f"Redis Queue --- Time Delay Reset --- {validated_fields['ghl_contact_id']}",
-                scope="Redis Queue", num_fields_added=result,
-                fields_added=json.dumps(validated_fields),
-                ghl_contact_id=validated_fields['ghl_contact_id'])
-
-        return JSONResponse(
-            content={"message": "Response queued", "ghl_contact_id": validated_fields['ghl_contact_id']}, 
-            status_code=200
-        )
-    except Exception as e:
-        log("error", f"Unexpected error: {str(e)}", traceback=traceback.format_exc())
-        return JSONResponse(content={"error": "Internal server error"}, status_code=500)
-
-@app.post("/moveConvoForward")
-async def move_convo_forward(request: Request):
+def validate_request_data(data):
     """
-    Asynchronous endpoint that uses Celery for request queueing and processing.
-    Handles OpenAI Assistant interactions with rate limiting and order preservation per contact.
+    Validate request data, ensure required fields are present, and handle conversation ID retrieval.
+    Returns validated fields dictionary or None if validation fails.
+    """
+    required_fields = ["thread_id", "assistant_id", "ghl_contact_id", "ghl_recent_message"]
+    fields = {field: data.get(field) for field in required_fields}
+    fields["ghl_convo_id"] = data.get("ghl_convo_id")
+
+    missing_fields = [field for field in required_fields if not fields[field] or fields[field] in ["", "null", None]]
+    if missing_fields:
+        log("error", f"Validation -- Missing {', '.join(missing_fields)} -- {fields['ghl_contact_id']}",
+            ghl_contact_id=fields["ghl_contact_id"], scope="Validation", received_fields=fields)
+        return None
+
+    if not fields["ghl_convo_id"] or fields["ghl_convo_id"] in ["", "null"]:
+        ghl_api = GoHighLevelAPI(location_id=os.getenv('GHL_LOCATION_ID', ''))
+        fields["ghl_convo_id"] = ghl_api.get_conversation_id(fields["ghl_contact_id"])
+        if not fields["ghl_convo_id"]:
+            return None
+
+    return fields
+
+class GoHighLevelAPI:
+    BASE_URL = "https://services.leadconnectorhq.com"
+    HEADERS = {
+        "Version": "2021-04-15",
+        "Accept": "application/json"
+    }
+
+    def __init__(self, location_id):
+        self.location_id = location_id
+
+    def get_conversation_id(self, contact_id):
+        """Retrieve conversation ID from GHL API."""
+        token = fetch_ghl_access_token()
+        if not token:
+            log("error", "Get convo ID -- Token fetch failed", contact_id=contact_id)
+            return None
+
+        url = f"{self.BASE_URL}/conversations/search"
+        headers = {**self.HEADERS, "Authorization": f"Bearer {token}"}
+        params = {"locationId": self.location_id, "contactId": contact_id}
+
+        response = requests.get(url, headers=headers, params=params)
+        if response.status_code != 200:
+            log("error", "Get convo ID API call failed", contact_id=contact_id,
+                status_code=response.status_code, response=response.text)
+            return None
+
+        conversations = response.json().get("conversations", [])
+        if not conversations:
+            log("error", "No Convo ID found", contact_id=contact_id, response=response.text)
+            return None
+
+        return conversations[0].get("id")
+
+    def retrieve_messages(self, convo_id, contact_id):
+        """Retrieve messages from GHL API."""
+        token = fetch_ghl_access_token()
+        if not token:
+            log("error", "Retrieve Messages -- Token fetch failed", contact_id=contact_id)
+            return []
+
+        url = f"{self.BASE_URL}/conversations/{convo_id}/messages"
+        headers = {**self.HEADERS, "Authorization": f"Bearer {token}"}
+
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            log("error", "Retrieve Messages -- API Call Failed",
+                contact_id=contact_id, convo_id=convo_id,
+                status_code=response.status_code, response=response.text)
+            return []
+
+        messages = response.json().get("messages", {}).get("messages", [])
+        if not messages:
+            log("error", "Retrieve Messages -- No messages found", contact_id=contact_id,
+                convo_id=convo_id, api_response=response.json())
+            return []
+
+        return messages
+
+    def update_contact(self, contact_id, update_data):
+        """Update contact information in GHL API."""
+        token = fetch_ghl_access_token()
+        if not token:
+            log("error", "Update Contact -- Token fetch failed", contact_id=contact_id)
+            return None
+
+        url = f"{self.BASE_URL}/contacts/{contact_id}"
+        headers = {**self.HEADERS, "Authorization": f"Bearer {token}"}
+
+        response = requests.put(url, headers=headers, json=update_data)
+        if response.status_code != 200:
+            log("error", "Update Contact -- API Call Failed", contact_id=contact_id,
+                status_code=response.status_code, response=response.text)
+            return None
+
+        log("info", "Update Contact -- Successfully updated", contact_id=contact_id, response=response.json())
+        return response.json()
+
+def fetch_ghl_access_token():
+    """Fetch current GHL access token from Railway."""
+    query = f"""
+    query {{
+      variables(
+        projectId: "{os.getenv('RAILWAY_PROJECT_ID')}"
+        environmentId: "{os.getenv('RAILWAY_ENVIRONMENT_ID')}"
+        serviceId: "{os.getenv('RAILWAY_SERVICE_ID')}"
+      )
+    }}
     """
     try:
-        request_data = await request.json()
-        
-        if not request_data.get("ghl_contact_id"):
-            return JSONResponse(content={"error": "Missing contact ID"}, status_code=400)
-            
-        contact_id = request_data["ghl_contact_id"]
-        
-        # Check if there's an existing task for this contact
-        lock_key = f"processing_lock:{contact_id}"
-        if redis_client.exists(lock_key):
-            return JSONResponse(
-                content={
-                    "message": "Request queued - previous request still processing",
-                    "status": "queued"
-                },
-                status_code=202
-            )
-        
-        # Set a processing lock with 10-minute timeout
-        redis_client.setex(lock_key, 600, "1")
-        
-        # Queue the task in Celery
-        task = process_conversation.delay(request_data)
-        
-        log("info", f"OpenAI Assistant task queued for contact {contact_id}", 
-            task_id=task.id,
-            thread_id=request_data.get('thread_id'))
-        
-        return JSONResponse(
-            content={
-                "message": "Request accepted for processing",
-                "task_id": task.id,
-                "status": "processing"
+        response = requests.post(
+            "https://backboard.railway.app/graphql/v2",
+            headers={
+                "Authorization": f"Bearer {os.getenv('RAILWAY_API_TOKEN')}", 
+                "Content-Type": "application/json"
             },
-            status_code=202
+            json={"query": query}
         )
-
+        if response.status_code == 200:
+            response_data = response.json()
+            if response_data and 'data' in response_data and response_data['data']:
+                variables = response_data['data'].get('variables', {})
+                if variables and 'GHL_ACCESS' in variables:
+                    return variables['GHL_ACCESS']
+        log("error", f"GHL Access -- Failed to fetch token", 
+            scope="GHL Access", status_code=response.status_code, 
+            response=response.text)
     except Exception as e:
-        tb_str = traceback.format_exc()
-        log("error", "GENERAL -- Unhandled exception in request processing",
-            scope="General", error=str(e), traceback=tb_str)
-        return JSONResponse(
-            content={"error": str(e), "traceback": tb_str},
-            status_code=500
-        )
-
-@app.get("/taskStatus/{task_id}")
-async def get_task_status(task_id: str):
-    """Endpoint to check the status of a queued task"""
-    try:
-        task = process_conversation.AsyncResult(task_id)
-        if task.ready():
-            if task.successful():
-                result = task.get()
-                return JSONResponse(content={
-                    "status": "completed",
-                    "result": result
-                })
-            else:
-                return JSONResponse(content={
-                    "status": "failed",
-                    "error": str(task.result)
-                })
-        return JSONResponse(content={"status": "processing"})
-    except Exception as e:
-        return JSONResponse(
-            content={"error": f"Error checking task status: {str(e)}"},
-            status_code=500
-        )
-
-@app.post("/testEndpoint")
-async def test_endpoint(request: Request):
-    try:
-        data = await request.json()
-        log("info", "Received request parameters", **{
-            k: data.get(k) for k in [
-                "thread_id", "assistant_id", "ghl_contact_id", 
-                "ghl_recent_message", "ghl_convo_id"
-            ]
-        })
-        return JSONResponse(
-            content={
-                "response_type": "action, message, message_action",
-                "action": {
-                    "type": "force end, handoff, add_contact_id",
-                    "details": {
-                        "ghl_convo_id": "afdlja;ldf"
-                    }
-                },
-                "message": "wwwwww",
-                "error": "booo error"
-            },
-            status_code=200
-        )
-    except Exception as e:
-        log("error", f"Unexpected error: {str(e)}", traceback=traceback.format_exc())
-        return JSONResponse(content={"error": "Internal server error"}, status_code=500)
+        log("error", f"GHL Access -- Request failed", 
+            scope="GHL Access", error=str(e), 
+            traceback=traceback.format_exc())
+    return None
