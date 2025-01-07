@@ -3,5 +3,4 @@ hypercorn==0.14.4
 requests==2.32.3
 redis==5.2.1
 celery==5.3.6
-flower==2.0.1
 openai==0.28.0
