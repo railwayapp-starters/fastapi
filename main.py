@@ -19,9 +19,8 @@ app = FastAPI()
 redis_url = os.getenv("REDIS_URL")
 redis_client = Redis.from_url(redis_url, decode_responses=True)
 
-# Initialize OpenAI client
+# Initialize OpenAI
 openai.api_key = os.getenv('OPENAI_API_KEY')
-client = openai.Client()
 
 @app.post("/triggerResponse")
 async def trigger_response(request: Request):
