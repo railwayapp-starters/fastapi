@@ -1,9 +1,9 @@
+# functions.py
 import traceback
 import aiohttp
 import json
 import os
 from typing import Optional, Dict, List
-from redis.asyncio import Redis
 from datetime import datetime
 
 def log(level: str, msg: str, **kwargs):
@@ -15,41 +15,29 @@ def log(level: str, msg: str, **kwargs):
         **kwargs
     }))
 
-class OpenAIAPI:
-    def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "OpenAI-Beta": "assistants=v2",
-            "Content-Type": "application/json"
-        }
-        self._session = None
+async def validate_request_data(data: dict) -> Optional[dict]:
+    """
+    Validate request data, ensure required fields are present, and handle conversation ID retrieval.
+    Returns validated fields dictionary or None if validation fails.
+    """
+    required_fields = ["thread_id", "assistant_id", "ghl_contact_id", "ghl_recent_message"]
+    fields = {field: data.get(field) for field in required_fields}
+    fields["ghl_convo_id"] = data.get("ghl_convo_id")
 
-    async def get_session(self):
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(headers=self.headers)
-        return self._session
+    missing_fields = [field for field in required_fields if not fields[field] or fields[field] in ["", "null", None]]
+    if missing_fields:
+        log("error", f"Validation -- Missing {', '.join(missing_fields)} -- {fields['ghl_contact_id']}",
+            ghl_contact_id=fields["ghl_contact_id"], scope="Validation", received_fields=fields)
+        return None
 
-    async def close(self):
-        if self._session and not self._session.closed:
-            await self._session.close()
-
-    async def create_thread(self, messages: List[Dict] = None):
-        """Create a new thread with optional initial messages."""
-        try:
-            session = await self.get_session()
-            async with session.post(
-                "https://api.openai.com/v1/threads",
-                json={"messages": messages} if messages else {}
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                error_text = await response.text()
-                log("error", "Thread creation failed", response=error_text)
-                return None
-        except Exception as e:
-            log("error", "Thread creation error", error=str(e))
+    if not fields["ghl_convo_id"] or fields["ghl_convo_id"] in ["", "null"]:
+        ghl_api = GoHighLevelAPI(location_id=os.getenv("GHL_LOCATION_ID"))
+        fields["ghl_convo_id"] = await ghl_api.get_conversation_id(fields["ghl_contact_id"])
+        await ghl_api.close()
+        if not fields["ghl_convo_id"]:
             return None
+
+    return fields
 
 class GoHighLevelAPI:
     BASE_URL = "https://services.leadconnectorhq.com"
@@ -135,6 +123,35 @@ class GoHighLevelAPI:
                 error=str(e), traceback=traceback.format_exc())
             return []
 
+    async def update_contact(self, contact_id: str, update_data: Dict) -> Optional[Dict]:
+        """Update contact information in GHL API asynchronously."""
+        token = await fetch_ghl_access_token()
+        if not token:
+            log("error", "Update Contact -- Token fetch failed", contact_id=contact_id)
+            return None
+
+        url = f"{self.BASE_URL}/contacts/{contact_id}"
+        headers = {**self.HEADERS, "Authorization": f"Bearer {token}"}
+
+        session = await self.get_session()
+        try:
+            async with session.put(url, headers=headers, json=update_data) as response:
+                if response.status != 200:
+                    log("error", "Update Contact -- API Call Failed",
+                        contact_id=contact_id, status_code=response.status,
+                        response=await response.text())
+                    return None
+
+                data = await response.json()
+                log("info", "Update Contact -- Successfully updated",
+                    contact_id=contact_id, response=data)
+                return data
+        except Exception as e:
+            log("error", "Update contact request failed",
+                contact_id=contact_id, error=str(e),
+                traceback=traceback.format_exc())
+            return None
+
 async def fetch_ghl_access_token() -> Optional[str]:
     """Fetch current GHL access token from Railway asynchronously."""
     query = f"""
@@ -171,24 +188,3 @@ async def fetch_ghl_access_token() -> Optional[str]:
                 scope="GHL Access", error=str(e),
                 traceback=traceback.format_exc())
         return None
-
-async def validate_request_data(data: dict) -> Optional[dict]:
-    """Validate request data and handle conversation ID retrieval."""
-    required_fields = ["thread_id", "assistant_id", "ghl_contact_id", "ghl_recent_message"]
-    fields = {field: data.get(field) for field in required_fields}
-    fields["ghl_convo_id"] = data.get("ghl_convo_id")
-
-    missing_fields = [field for field in required_fields if not fields[field] or fields[field] in ["", "null", None]]
-    if missing_fields:
-        log("error", f"Validation -- Missing {', '.join(missing_fields)} -- {fields['ghl_contact_id']}",
-            ghl_contact_id=fields["ghl_contact_id"], scope="Validation", received_fields=fields)
-        return None
-
-    if not fields["ghl_convo_id"] or fields["ghl_convo_id"] in ["", "null"]:
-        ghl_api = GoHighLevelAPI(location_id=os.getenv("GHL_LOCATION_ID"))
-        fields["ghl_convo_id"] = await ghl_api.get_conversation_id(fields["ghl_contact_id"])
-        await ghl_api.close()
-        if not fields["ghl_convo_id"]:
-            return None
-
-    return fields
