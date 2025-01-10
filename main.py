@@ -15,9 +15,9 @@ from functions import (
 
 app = FastAPI()
 
-# Simple Redis setup as in original
+# Simple Redis setup
 redis_url = os.getenv("REDIS_URL")
-redis_client = aioredis.from_url(redis_url, decode_responses=True)
+redis_client = Redis.from_url(redis_url, decode_responses=True)
 
 # Queue management
 conversation_queues: Dict[str, asyncio.Queue] = {}
