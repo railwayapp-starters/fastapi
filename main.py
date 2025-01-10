@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import traceback
@@ -39,8 +40,14 @@ async def get_processing_lock(contact_id: str) -> asyncio.Lock:
 async def trigger_response(request: Request):
     try:
         request_data = await request.json()
-        validated_fields = await validate_request_data(request_data)
+        
+        # Extract message content for thread_id
+        messages = request_data.get("messages", [])
+        if messages:
+            # Add any message processing here if needed
+            pass
 
+        validated_fields = await validate_request_data(request_data)
         if not validated_fields:
             return JSONResponse(content={"error": "Invalid request data"}, status_code=400)
 
