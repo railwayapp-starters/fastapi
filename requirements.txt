@@ -1,5 +1,5 @@
 fastapi==0.100.0
 hypercorn==0.14.4
+redis[hiredis]==5.0.1  # Using redis-py with async support
 aiohttp==3.8.5
-aioredis==2.0.1
 openai==1.3.0
