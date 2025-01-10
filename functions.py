@@ -3,7 +3,7 @@ import aiohttp
 import json
 import os
 from typing import Optional, Dict, List
-import aioredis
+from redis.asyncio import Redis
 from datetime import datetime
 
 def log(level: str, msg: str, **kwargs):
