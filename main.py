@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import traceback
-from redis import asyncio as aioredis
+from redis.asyncio import Redis
 import os
 import json
 import asyncio
