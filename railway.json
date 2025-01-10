@@ -4,6 +4,6 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "bash -c 'celery -A celery_worker worker --loglevel=debug & hypercorn main:app --bind \"[::]:$PORT\" --log-level debug'"
+    "startCommand": "hypercorn main:app --bind \"[::]:$PORT\" --workers 2 --worker-class asyncio"
   }
 }
